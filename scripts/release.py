@@ -1,3 +1,4 @@
+import subprocess
 import sys
 import os
 import json
@@ -6,6 +7,18 @@ import argparse
 import re
 from pathlib import Path
 from typing import Optional
+
+# Monkey patch for EIM installation
+
+PS_INIT = r". C:\Espressif\tools\Microsoft.v5.5.3.PowerShell_profile.ps1; "
+
+def _patched_system(cmd: str) -> int:
+    completed = subprocess.run(
+        ["powershell", "-NoProfile", "-NoLogo", "-Command", PS_INIT + cmd]
+    )
+    return completed.returncode
+
+os.system = _patched_system
 
 # Switch to project root directory
 os.chdir(Path(__file__).resolve().parent.parent)

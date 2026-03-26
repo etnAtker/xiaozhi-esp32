@@ -5,13 +5,16 @@
 #include "button.h"
 #include "config.h"
 #include "i2c_device.h"
-#include "led/single_led.h"
+#include "led/gpio_led.h"
+#include "mcp_server.h"
 #include "esp_video.h"
 
 #include <esp_log.h>
 #include <esp_lcd_panel_vendor.h>
 #include <driver/i2c_master.h>
 #include <driver/spi_common.h>
+#include <cassert>
+#include <memory>
 
 #define TAG "atk_dnesp32s3"
 
@@ -41,15 +44,35 @@ public:
             WriteReg(0x03, data);
         }
     }
+
+    bool GetInputState(uint8_t bit) {
+        uint8_t data;
+        int index = bit;
+
+        if (bit < 8) {
+            data = ReadReg(0x00);
+        } else {
+            data = ReadReg(0x01);
+            index -= 8;
+        }
+
+        return ((data >> index) & 0x01) != 0;
+    }
 };
 
 class atk_dnesp32s3 : public WifiBoard {
 private:
+    static constexpr uint8_t XL9555_KEY0_BIT = 15; // io1_7
+    static atk_dnesp32s3* instance_;
+
     i2c_master_bus_handle_t i2c_bus_;
     Button boot_button_;
+    std::unique_ptr<Button> key0_button_;
+    button_driver_t* key0_button_driver_ = nullptr;
     LcdDisplay* display_;
     XL9555* xl9555_;
     EspVideo* camera_;
+    bool led_on_ = false;
 
     void InitializeI2c() {
         // Initialize I2C peripheral
@@ -92,6 +115,71 @@ private:
             }
             app.ToggleChatState();
         });
+
+        button_config_t key0_button_config = {
+            .long_press_time = 0,
+            .short_press_time = 0,
+        };
+
+        key0_button_driver_ = static_cast<button_driver_t*>(calloc(1, sizeof(button_driver_t)));
+        assert(key0_button_driver_ != nullptr);
+        key0_button_driver_->enable_power_save = false;
+        key0_button_driver_->get_key_level = [](button_driver_t* button_driver) -> uint8_t {
+            return (instance_ != nullptr && !instance_->xl9555_->GetInputState(XL9555_KEY0_BIT)) ? 1 : 0;
+        };
+        key0_button_driver_->del = [](button_driver_t* button_driver) -> esp_err_t {
+            free(button_driver);
+            return ESP_OK;
+        };
+
+        button_handle_t key0_button_handle = nullptr;
+        ESP_ERROR_CHECK(iot_button_create(&key0_button_config, key0_button_driver_, &key0_button_handle));
+        key0_button_ = std::make_unique<Button>(key0_button_handle);
+        key0_button_->OnClick([this]() {
+            SetLedPower(!led_on_);
+            ESP_LOGI(TAG, "key0 demo led: %s", led_on_ ? "on" : "off");
+        });
+    }
+
+    GpioLed* GetBoardLed() {
+        return dynamic_cast<GpioLed*>(GetLed());
+    }
+
+    bool SetLedPower(bool on) {
+        auto* led = GetBoardLed();
+        if (led == nullptr) {
+            ESP_LOGW(TAG, "GpioLed unavailable");
+            return false;
+        }
+
+        led->SetManualPower(on, 100);
+        led_on_ = on;
+        return true;
+    }
+
+    void InitializeTools() {
+        auto& mcp_server = McpServer::GetInstance();
+        mcp_server.AddTool("self.light.get_power",
+            "Get the current power state of the light.",
+            PropertyList(),
+            [this](const PropertyList& properties) -> ReturnValue {
+                cJSON* result = cJSON_CreateObject();
+                cJSON_AddBoolToObject(result, "power", led_on_);
+                return result;
+            });
+
+        mcp_server.AddTool("self.light.set_power",
+            "Set the power state of the light. Use true to turn it on and false to turn it off.",
+            PropertyList({
+                Property("power", kPropertyTypeBoolean)
+            }),
+            [this](const PropertyList& properties) -> ReturnValue {
+                bool power = properties["power"].value<bool>();
+                if (!SetLedPower(power)) {
+                    throw std::runtime_error("Failed to access board LED");
+                }
+                return true;
+            });
     }
 
     void InitializeSt7789Display() {
@@ -184,15 +272,17 @@ private:
 
 public:
     atk_dnesp32s3() : boot_button_(BOOT_BUTTON_GPIO) {
+        instance_ = this;
         InitializeI2c();
         InitializeSpi();
         InitializeSt7789Display();
         InitializeButtons();
+        InitializeTools();
         InitializeCamera();
     }
 
     virtual Led* GetLed() override {
-        static SingleLed led(BUILTIN_LED_GPIO);
+        static GpioLed led(BUILTIN_LED_GPIO, 1);
         return &led;
     }
 
@@ -221,5 +311,7 @@ public:
         return camera_;
     }
 };
+
+atk_dnesp32s3* atk_dnesp32s3::instance_ = nullptr;
 
 DECLARE_BOARD(atk_dnesp32s3);

@@ -21,6 +21,9 @@ class GpioLed : public Led {
     void TurnOn();
     void TurnOff();
     void SetBrightness(uint8_t brightness);
+    void SetManualPower(bool on, uint8_t brightness = 100);
+    void ClearManualPower();
+    bool IsManualPowerEnabled() const;
 
  private:
     std::mutex mutex_;
@@ -33,6 +36,9 @@ class GpioLed : public Led {
     esp_timer_handle_t blink_timer_ = nullptr;
     bool fade_up_ = true;
     TaskHandle_t event_task_handle_;
+    std::atomic<bool> manual_power_enabled_{false};
+    std::atomic<bool> manual_power_on_{false};
+    std::atomic<uint8_t> manual_brightness_{100};
     
     static void EventTask(void* arg);
     void StartBlinkTask(int times, int interval_ms);

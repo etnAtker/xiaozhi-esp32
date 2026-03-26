@@ -129,6 +129,27 @@ void GpioLed::TurnOff() {
     ledc_update_duty(ledc_channel_.speed_mode, ledc_channel_.channel);
 }
 
+void GpioLed::SetManualPower(bool on, uint8_t brightness) {
+    manual_brightness_.store(brightness);
+    manual_power_on_.store(on);
+    manual_power_enabled_.store(true);
+    SetBrightness(brightness);
+    if (on) {
+        TurnOn();
+    } else {
+        TurnOff();
+    }
+}
+
+void GpioLed::ClearManualPower() {
+    manual_power_enabled_.store(false);
+    OnStateChanged();
+}
+
+bool GpioLed::IsManualPowerEnabled() const {
+    return manual_power_enabled_.load();
+}
+
 void GpioLed::BlinkOnce() {
     Blink(1, 100);
 }
@@ -205,6 +226,16 @@ bool IRAM_ATTR GpioLed::FadeCallback(const ledc_cb_param_t *param, void *user_ar
 }
 
 void GpioLed::OnStateChanged() {
+    if (manual_power_enabled_.load()) {
+        SetBrightness(manual_brightness_.load());
+        if (manual_power_on_.load()) {
+            TurnOn();
+        } else {
+            TurnOff();
+        }
+        return;
+    }
+
     auto& app = Application::GetInstance();
     auto device_state = app.GetDeviceState();
     switch (device_state) {

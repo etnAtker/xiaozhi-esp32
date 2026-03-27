@@ -2,6 +2,7 @@
 #include "system_info.h"
 #include "settings.h"
 #include "assets/lang_config.h"
+#include "sdkconfig.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -23,6 +24,7 @@
 #include <algorithm>
 
 #define TAG "Ota"
+#define DEBUG_OTA_ENABLED_KEY "dbg_ota_en"
 
 
 Ota::Ota() {
@@ -45,6 +47,14 @@ Ota::~Ota() {
 
 std::string Ota::GetCheckVersionUrl() {
     Settings settings("wifi", false);
+
+#if CONFIG_USE_DEBUG_OTA_TOGGLE
+    if (settings.GetBool(DEBUG_OTA_ENABLED_KEY, false) && sizeof(CONFIG_DEBUG_OTA_URL) > 1) {
+        ESP_LOGI(TAG, "Using debug OTA URL: %s", CONFIG_DEBUG_OTA_URL);
+        return CONFIG_DEBUG_OTA_URL;
+    }
+#endif
+
     std::string url = settings.GetString("ota_url");
     if (url.empty()) {
         url = CONFIG_OTA_URL;

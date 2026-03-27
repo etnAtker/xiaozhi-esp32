@@ -6,6 +6,20 @@ config OTA_URL
     help
         The application will access this URL to check for new firmwares and server address.
 
+config USE_DEBUG_OTA_TOGGLE
+    bool "Enable Debug OTA Toggle"
+    default n
+    help
+        Enable switching between the normal OTA URL and a debug OTA URL by a
+        hardware key on supported boards.
+
+config DEBUG_OTA_URL
+    string "Debug OTA URL"
+    default ""
+    depends on USE_DEBUG_OTA_TOGGLE
+    help
+        Debug OTA URL used when debug OTA mode is enabled on supported boards.
+
 choice
     prompt "Flash Assets"
     default FLASH_DEFAULT_ASSETS if !USE_EMOTE_MESSAGE_STYLE

@@ -8,6 +8,8 @@
 #include "led/gpio_led.h"
 #include "mcp_server.h"
 #include "esp_video.h"
+#include "settings.h"
+#include "sdkconfig.h"
 
 #include <esp_log.h>
 #include <nvs_flash.h>
@@ -20,6 +22,7 @@
 #include <memory>
 
 #define TAG "atk_dnesp32s3"
+#define DEBUG_OTA_ENABLED_KEY "dbg_ota_en"
 
 class XL9555 : public I2cDevice {
 public:
@@ -72,14 +75,17 @@ class atk_dnesp32s3 : public WifiBoard {
 private:
     static constexpr uint8_t XL9555_KEY0_BIT = 15; // io1_7
     static constexpr uint8_t XL9555_KEY1_BIT = 14; // io1_6
+    static constexpr uint8_t XL9555_KEY2_BIT = 13; // io1_5
     static atk_dnesp32s3* instance_;
 
     i2c_master_bus_handle_t i2c_bus_;
     Button boot_button_;
     std::unique_ptr<Button> key0_button_;
     std::unique_ptr<Button> key1_button_;
+    std::unique_ptr<Button> key2_button_;
     button_driver_t* key0_button_driver_ = nullptr;
     button_driver_t* key1_button_driver_ = nullptr;
+    button_driver_t* key2_button_driver_ = nullptr;
     LcdDisplay* display_;
     XL9555* xl9555_;
     EspVideo* camera_;
@@ -112,6 +118,37 @@ private:
             Application::GetInstance().Reboot();
             vTaskDelete(nullptr);
         }, "clear_nvs", 4096, this, 2, nullptr);
+    }
+
+    void ToggleDebugOtaAndReboot() {
+#if CONFIG_USE_DEBUG_OTA_TOGGLE
+        if (sizeof(CONFIG_DEBUG_OTA_URL) <= 1) {
+            auto* display = GetDisplay();
+            if (display != nullptr) {
+                display->ShowNotification("未配置调试OTA地址");
+            }
+            ESP_LOGW(TAG, "Debug OTA toggle requested but CONFIG_DEBUG_OTA_URL is empty");
+            return;
+        }
+
+        Settings settings("wifi", true);
+        bool enabled = settings.GetBool(DEBUG_OTA_ENABLED_KEY, false);
+        settings.SetBool(DEBUG_OTA_ENABLED_KEY, !enabled);
+
+        auto* display = GetDisplay();
+        if (display != nullptr) {
+            display->ShowNotification(!enabled ? "调试OTA已开启，正在重启" : "调试OTA已关闭，正在重启");
+        }
+
+        xTaskCreate([](void* arg) {
+            (void)arg;
+            vTaskDelay(pdMS_TO_TICKS(1200));
+            Application::GetInstance().Reboot();
+            vTaskDelete(nullptr);
+        }, "debug_ota_reboot", 4096, this, 2, nullptr);
+#else
+        ESP_LOGI(TAG, "Debug OTA toggle is disabled by sdkconfig");
+#endif
     }
 
     void InitializeI2c() {
@@ -196,6 +233,12 @@ private:
         CreateXl9555Button(XL9555_KEY1_BIT, key1_button_driver_, key1_button_, [] {
             Application::GetInstance().ToggleRecordingState();
         });
+
+#if CONFIG_USE_DEBUG_OTA_TOGGLE
+        CreateXl9555Button(XL9555_KEY2_BIT, key2_button_driver_, key2_button_, [this] {
+            ToggleDebugOtaAndReboot();
+        });
+#endif
     }
 
     GpioLed* GetBoardLed() {

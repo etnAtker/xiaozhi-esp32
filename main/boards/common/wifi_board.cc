@@ -5,6 +5,7 @@
 #include "system_info.h"
 #include "settings.h"
 #include "assets/lang_config.h"
+#include "sdkconfig.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -89,6 +90,15 @@ void WifiBoard::StartNetwork() {
 void WifiBoard::TryWifiConnect() {
     auto& ssid_manager = SsidManager::GetInstance();
     bool have_ssid = !ssid_manager.GetSsidList().empty();
+
+#if CONFIG_USE_SDKCONFIG_DEFAULT_WIFI
+    if (!have_ssid && sizeof(CONFIG_SDKCONFIG_DEFAULT_WIFI_SSID) > 1) {
+        ESP_LOGI(TAG, "No saved WiFi found in NVS, loading default WiFi from sdkconfig");
+        ssid_manager.AddSsid(CONFIG_SDKCONFIG_DEFAULT_WIFI_SSID,
+            CONFIG_SDKCONFIG_DEFAULT_WIFI_PASSWORD);
+        have_ssid = true;
+    }
+#endif
 
     if (have_ssid) {
         // Start connection attempt with timeout

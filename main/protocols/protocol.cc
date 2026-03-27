@@ -73,6 +73,16 @@ void Protocol::SendStopListening() {
     SendText(message);
 }
 
+void Protocol::SendStartRecording() {
+    std::string message = "{\"session_id\":\"" + session_id_ + "\",\"type\":\"record\",\"state\":\"start\"}";
+    SendText(message);
+}
+
+void Protocol::SendStopRecording() {
+    std::string message = "{\"session_id\":\"" + session_id_ + "\",\"type\":\"record\",\"state\":\"stop\"}";
+    SendText(message);
+}
+
 void Protocol::SendMcpMessage(const std::string& payload) {
     std::string message = "{\"session_id\":\"" + session_id_ + "\",\"type\":\"mcp\",\"payload\":" + payload + "}";
     SendText(message);

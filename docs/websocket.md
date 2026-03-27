@@ -190,10 +190,26 @@ WebSocket 文本帧以 JSON 方式传输，以下为常见的 `"type"` 字段及
        "type": "listen",
        "state": "detect",
        "text": "你好小明"
+   }
+   ```
+
+5. **Record**
+   - 表示设备端进入或退出独立录音态。
+   - 常见字段：
+     - `"session_id"`：会话标识
+     - `"type": "record"`
+     - `"state"`：`"start"` 或 `"stop"`
+   - 录音态下，设备继续复用现有二进制音频上传链路，但服务端不再走对话/ASR/TTS 流程，而是直接将音频保存为本地文件。
+   - 例：开始录音
+     ```json
+     {
+       "session_id": "xxx",
+       "type": "record",
+       "state": "start"
      }
      ```
 
-5. **MCP**
+6. **MCP**
    - 推荐用于物联网控制的新一代协议。所有设备能力发现、工具调用等均通过 type: "mcp" 的消息进行，payload 内部为标准 JSON-RPC 2.0（详见 [MCP 协议文档](./mcp-protocol.md)）。
    
    - **设备端到服务器发送 result 的例子：**

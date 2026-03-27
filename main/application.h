@@ -31,6 +31,9 @@
 #define MAIN_EVENT_START_LISTENING      (1 << 10)
 #define MAIN_EVENT_STOP_LISTENING       (1 << 11)
 #define MAIN_EVENT_STATE_CHANGED        (1 << 12)
+#define MAIN_EVENT_TOGGLE_RECORDING     (1 << 13)
+#define MAIN_EVENT_START_RECORDING      (1 << 14)
+#define MAIN_EVENT_STOP_RECORDING       (1 << 15)
 
 
 enum AecMode {
@@ -102,6 +105,9 @@ public:
      * Sends MAIN_EVENT_STOP_LISTENING to be handled in Run()
      */
     void StopListening();
+    void ToggleRecordingState();
+    void StartRecording();
+    void StopRecording();
 
     void Reboot();
     void WakeWordInvoke(const std::string& wake_word);
@@ -140,6 +146,7 @@ private:
     bool aborted_ = false;
     bool assets_version_checked_ = false;
     bool play_popup_on_listening_ = false;  // Flag to play popup sound after state changes to listening
+    bool start_recording_after_idle_ = false;
     int clock_ticks_ = 0;
     TaskHandle_t activation_task_handle_ = nullptr;
 
@@ -149,11 +156,15 @@ private:
     void HandleToggleChatEvent();
     void HandleStartListeningEvent();
     void HandleStopListeningEvent();
+    void HandleToggleRecordingEvent();
+    void HandleStartRecordingEvent();
+    void HandleStopRecordingEvent();
     void HandleNetworkConnectedEvent();
     void HandleNetworkDisconnectedEvent();
     void HandleActivationDoneEvent();
     void HandleWakeWordDetectedEvent();
     void ContinueOpenAudioChannel(ListeningMode mode);
+    void ContinueOpenRecordingChannel();
     void ContinueWakeWordInvoke(const std::string& wake_word);
 
     // Activation task (runs in background)

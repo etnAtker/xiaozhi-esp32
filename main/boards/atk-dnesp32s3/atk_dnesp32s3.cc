@@ -60,15 +60,23 @@ public:
     }
 };
 
+struct Xl9555ButtonDriver {
+    button_driver_t base;
+    uint8_t bit;
+};
+
 class atk_dnesp32s3 : public WifiBoard {
 private:
     static constexpr uint8_t XL9555_KEY0_BIT = 15; // io1_7
+    static constexpr uint8_t XL9555_KEY1_BIT = 14; // io1_6
     static atk_dnesp32s3* instance_;
 
     i2c_master_bus_handle_t i2c_bus_;
     Button boot_button_;
     std::unique_ptr<Button> key0_button_;
+    std::unique_ptr<Button> key1_button_;
     button_driver_t* key0_button_driver_ = nullptr;
+    button_driver_t* key1_button_driver_ = nullptr;
     LcdDisplay* display_;
     XL9555* xl9555_;
     EspVideo* camera_;
@@ -106,8 +114,36 @@ private:
         ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO));
     }
 
+    static void CreateXl9555Button(uint8_t bit, button_driver_t*& driver, std::unique_ptr<Button>& button,
+        std::function<void()> on_click) {
+        button_config_t button_config = {
+            .long_press_time = 0,
+            .short_press_time = 0,
+        };
+
+        auto* xl9555_button_driver = static_cast<Xl9555ButtonDriver*>(calloc(1, sizeof(Xl9555ButtonDriver)));
+        assert(xl9555_button_driver != nullptr);
+        xl9555_button_driver->bit = bit;
+
+        driver = &xl9555_button_driver->base;
+        driver->enable_power_save = false;
+        driver->get_key_level = [](button_driver_t* button_driver) -> uint8_t {
+            auto* xl9555_button_driver = reinterpret_cast<Xl9555ButtonDriver*>(button_driver);
+            return (instance_ != nullptr && !instance_->xl9555_->GetInputState(xl9555_button_driver->bit)) ? 1 : 0;
+        };
+        driver->del = [](button_driver_t* button_driver) -> esp_err_t {
+            free(button_driver);
+            return ESP_OK;
+        };
+
+        button_handle_t button_handle = nullptr;
+        ESP_ERROR_CHECK(iot_button_create(&button_config, driver, &button_handle));
+        button = std::make_unique<Button>(button_handle);
+        button->OnClick(std::move(on_click));
+    }
+
     void InitializeButtons() {
-        boot_button_.OnClick([this]() {
+        boot_button_.OnClick([this] {
             auto& app = Application::GetInstance();
             if (app.GetDeviceState() == kDeviceStateStarting) {
                 EnterWifiConfigMode();
@@ -116,28 +152,13 @@ private:
             app.ToggleChatState();
         });
 
-        button_config_t key0_button_config = {
-            .long_press_time = 0,
-            .short_press_time = 0,
-        };
-
-        key0_button_driver_ = static_cast<button_driver_t*>(calloc(1, sizeof(button_driver_t)));
-        assert(key0_button_driver_ != nullptr);
-        key0_button_driver_->enable_power_save = false;
-        key0_button_driver_->get_key_level = [](button_driver_t* button_driver) -> uint8_t {
-            return (instance_ != nullptr && !instance_->xl9555_->GetInputState(XL9555_KEY0_BIT)) ? 1 : 0;
-        };
-        key0_button_driver_->del = [](button_driver_t* button_driver) -> esp_err_t {
-            free(button_driver);
-            return ESP_OK;
-        };
-
-        button_handle_t key0_button_handle = nullptr;
-        ESP_ERROR_CHECK(iot_button_create(&key0_button_config, key0_button_driver_, &key0_button_handle));
-        key0_button_ = std::make_unique<Button>(key0_button_handle);
-        key0_button_->OnClick([this]() {
+        CreateXl9555Button(XL9555_KEY0_BIT, key0_button_driver_, key0_button_, [this] {
             SetLedPower(!led_on_);
             ESP_LOGI(TAG, "key0 demo led: %s", led_on_ ? "on" : "off");
+        });
+
+        CreateXl9555Button(XL9555_KEY1_BIT, key1_button_driver_, key1_button_, [] {
+            Application::GetInstance().ToggleRecordingState();
         });
     }
 

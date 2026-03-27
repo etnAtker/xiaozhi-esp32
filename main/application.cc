@@ -178,6 +178,9 @@ void Application::Run() {
         MAIN_EVENT_TOGGLE_CHAT |
         MAIN_EVENT_START_LISTENING |
         MAIN_EVENT_STOP_LISTENING |
+        MAIN_EVENT_TOGGLE_RECORDING |
+        MAIN_EVENT_START_RECORDING |
+        MAIN_EVENT_STOP_RECORDING |
         MAIN_EVENT_ACTIVATION_DONE |
         MAIN_EVENT_STATE_CHANGED;
 
@@ -215,6 +218,18 @@ void Application::Run() {
 
         if (bits & MAIN_EVENT_STOP_LISTENING) {
             HandleStopListeningEvent();
+        }
+
+        if (bits & MAIN_EVENT_TOGGLE_RECORDING) {
+            HandleToggleRecordingEvent();
+        }
+
+        if (bits & MAIN_EVENT_START_RECORDING) {
+            HandleStartRecordingEvent();
+        }
+
+        if (bits & MAIN_EVENT_STOP_RECORDING) {
+            HandleStopRecordingEvent();
         }
 
         if (bits & MAIN_EVENT_SEND_AUDIO) {
@@ -515,12 +530,20 @@ void Application::InitializeProtocol() {
             auto display = Board::GetInstance().GetDisplay();
             display->SetChatMessage("system", "");
             SetDeviceState(kDeviceStateIdle);
+            if (start_recording_after_idle_) {
+                start_recording_after_idle_ = false;
+                StartRecording();
+            }
         });
     });
     
     protocol_->OnIncomingJson([this, display](const cJSON* root) {
         // Parse JSON data
         auto type = cJSON_GetObjectItem(root, "type");
+        if (GetDeviceState() == kDeviceStateRecording) {
+            ESP_LOGI(TAG, "Ignore message in recording state: %s", type->valuestring);
+            return;
+        }
         if (strcmp(type->valuestring, "tts") == 0) {
             auto state = cJSON_GetObjectItem(root, "state");
             if (strcmp(state->valuestring, "start") == 0) {
@@ -671,8 +694,25 @@ void Application::StopListening() {
     xEventGroupSetBits(event_group_, MAIN_EVENT_STOP_LISTENING);
 }
 
+void Application::ToggleRecordingState() {
+    xEventGroupSetBits(event_group_, MAIN_EVENT_TOGGLE_RECORDING);
+}
+
+void Application::StartRecording() {
+    xEventGroupSetBits(event_group_, MAIN_EVENT_START_RECORDING);
+}
+
+void Application::StopRecording() {
+    xEventGroupSetBits(event_group_, MAIN_EVENT_STOP_RECORDING);
+}
+
 void Application::HandleToggleChatEvent() {
     auto state = GetDeviceState();
+
+    if (state == kDeviceStateRecording) {
+        ESP_LOGI(TAG, "Ignore chat toggle while recording");
+        return;
+    }
     
     if (state == kDeviceStateActivating) {
         SetDeviceState(kDeviceStateIdle);
@@ -725,8 +765,27 @@ void Application::ContinueOpenAudioChannel(ListeningMode mode) {
     SetListeningMode(mode);
 }
 
+void Application::ContinueOpenRecordingChannel() {
+    if (GetDeviceState() != kDeviceStateConnecting) {
+        return;
+    }
+
+    if (!protocol_->IsAudioChannelOpened()) {
+        if (!protocol_->OpenAudioChannel()) {
+            return;
+        }
+    }
+
+    SetDeviceState(kDeviceStateRecording);
+}
+
 void Application::HandleStartListeningEvent() {
     auto state = GetDeviceState();
+
+    if (state == kDeviceStateRecording) {
+        ESP_LOGI(TAG, "Ignore start listening while recording");
+        return;
+    }
     
     if (state == kDeviceStateActivating) {
         SetDeviceState(kDeviceStateIdle);
@@ -771,6 +830,62 @@ void Application::HandleStopListeningEvent() {
         }
         SetDeviceState(kDeviceStateIdle);
     }
+}
+
+void Application::HandleToggleRecordingEvent() {
+    if (GetDeviceState() == kDeviceStateRecording) {
+        StopRecording();
+    } else {
+        StartRecording();
+    }
+}
+
+void Application::HandleStartRecordingEvent() {
+    auto state = GetDeviceState();
+
+    if (state == kDeviceStateRecording || state == kDeviceStateActivating ||
+        state == kDeviceStateWifiConfiguring || state == kDeviceStateAudioTesting) {
+        return;
+    }
+
+    if (!protocol_) {
+        ESP_LOGE(TAG, "Protocol not initialized");
+        return;
+    }
+
+    if (state == kDeviceStateListening || state == kDeviceStateSpeaking) {
+        start_recording_after_idle_ = true;
+        if (state == kDeviceStateSpeaking) {
+            AbortSpeaking(kAbortReasonNone);
+        }
+        protocol_->CloseAudioChannel();
+        return;
+    }
+
+    if (state == kDeviceStateIdle) {
+        if (!protocol_->IsAudioChannelOpened()) {
+            SetDeviceState(kDeviceStateConnecting);
+            Schedule([this]() {
+                ContinueOpenRecordingChannel();
+            });
+            return;
+        }
+        SetDeviceState(kDeviceStateRecording);
+    }
+}
+
+void Application::HandleStopRecordingEvent() {
+    if (GetDeviceState() != kDeviceStateRecording) {
+        return;
+    }
+
+    if (protocol_) {
+        protocol_->SendStopRecording();
+        protocol_->CloseAudioChannel();
+        return;
+    }
+
+    SetDeviceState(kDeviceStateIdle);
 }
 
 void Application::HandleWakeWordDetectedEvent() {
@@ -902,6 +1017,14 @@ void Application::HandleStateChangedEvent() {
                 play_popup_on_listening_ = false;
                 audio_service_.PlaySound(Lang::Sounds::OGG_POPUP);
             }
+            break;
+        case kDeviceStateRecording:
+            display->SetStatus("录音中...");
+            display->SetEmotion("neutral");
+            display->SetChatMessage("system", "");
+            protocol_->SendStartRecording();
+            audio_service_.EnableVoiceProcessing(true);
+            audio_service_.EnableWakeWordDetection(false);
             break;
         case kDeviceStateSpeaking:
             display->SetStatus(Lang::Strings::SPEAKING);

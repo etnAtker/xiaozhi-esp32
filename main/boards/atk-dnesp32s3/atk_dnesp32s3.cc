@@ -10,9 +10,12 @@
 #include "esp_video.h"
 
 #include <esp_log.h>
+#include <nvs_flash.h>
 #include <esp_lcd_panel_vendor.h>
 #include <driver/i2c_master.h>
 #include <driver/spi_common.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <cassert>
 #include <memory>
 
@@ -82,6 +85,35 @@ private:
     EspVideo* camera_;
     bool led_on_ = false;
 
+    void ClearNvsAndReboot() {
+        auto* display = GetDisplay();
+        if (display != nullptr) {
+            display->ShowNotification("正在清除NVS...");
+        }
+
+        xTaskCreate([](void* arg) {
+            (void)arg;
+            ESP_LOGW(TAG, "BOOT long press detected, clearing NVS");
+
+            esp_err_t ret = nvs_flash_erase();
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to erase NVS: %s", esp_err_to_name(ret));
+            } else {
+                ret = nvs_flash_init();
+                if (ret != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to reinitialize NVS: %s", esp_err_to_name(ret));
+                }
+            }
+
+            if (ret == ESP_OK) {
+                ESP_LOGI(TAG, "NVS cleared successfully, rebooting");
+            }
+
+            Application::GetInstance().Reboot();
+            vTaskDelete(nullptr);
+        }, "clear_nvs", 4096, this, 2, nullptr);
+    }
+
     void InitializeI2c() {
         // Initialize I2C peripheral
         i2c_master_bus_config_t i2c_bus_cfg = {
@@ -150,6 +182,10 @@ private:
                 return;
             }
             app.ToggleChatState();
+        });
+
+        boot_button_.OnLongPress([this] {
+            ClearNvsAndReboot();
         });
 
         CreateXl9555Button(XL9555_KEY0_BIT, key0_button_driver_, key0_button_, [this] {
@@ -292,7 +328,7 @@ private:
     }
 
 public:
-    atk_dnesp32s3() : boot_button_(BOOT_BUTTON_GPIO) {
+    atk_dnesp32s3() : boot_button_(BOOT_BUTTON_GPIO, false, 5000) {
         instance_ = this;
         InitializeI2c();
         InitializeSpi();

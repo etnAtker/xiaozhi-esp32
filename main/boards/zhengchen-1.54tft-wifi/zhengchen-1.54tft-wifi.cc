@@ -103,6 +103,12 @@ private:
 
         volume_up_button_.OnClick([this]() {
             power_save_timer_->WakeUp();
+
+            if (Application::GetInstance().GetDeviceState() == kDeviceStateRecording) {
+                Application::GetInstance().StopRecording();
+                return;
+            }
+
             auto codec = GetAudioCodec();
             auto volume = codec->output_volume() + 10;
             if (volume > 100) {
@@ -114,8 +120,7 @@ private:
 
         volume_up_button_.OnLongPress([this]() {
             power_save_timer_->WakeUp();
-            GetAudioCodec()->SetOutputVolume(100);
-            GetDisplay()->ShowNotification(Lang::Strings::MAX_VOLUME);
+            Application::GetInstance().ToggleRecordingState();
         });
 
         volume_down_button_.OnClick([this]() {

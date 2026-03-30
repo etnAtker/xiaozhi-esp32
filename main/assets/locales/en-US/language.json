@@ -18,6 +18,7 @@
         "REGISTERING_NETWORK": "Waiting for network...",
         "CHECKING_NEW_VERSION": "Checking for new version...",
         "CHECK_NEW_VERSION_FAILED": "Check for new version failed, will retry in %d seconds: %s",
+        "CLEARING_NVS": "Clearing NVS...",
         "SWITCH_TO_WIFI_NETWORK": "Switching to Wi-Fi...",
         "SWITCH_TO_4G_NETWORK": "Switching to 4G...",
         "STANDBY": "Standby",
@@ -53,6 +54,9 @@
         "PLEASE_WAIT": "Please wait...",
         "FOUND_NEW_ASSETS": "Found new assets: %s",
         "DOWNLOAD_ASSETS_FAILED": "Failed to download assets",
+        "DEBUG_OTA_DISABLED_REBOOTING": "Debug OTA disabled, rebooting",
+        "DEBUG_OTA_ENABLED_REBOOTING": "Debug OTA enabled, rebooting",
+        "DEBUG_OTA_URL_NOT_CONFIGURED": "Debug OTA URL is not configured",
         "LOADING_ASSETS": "Loading assets...",
         "HELLO_MY_FRIEND": "Hello, my friend!"
     }

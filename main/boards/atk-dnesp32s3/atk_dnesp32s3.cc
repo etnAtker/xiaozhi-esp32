@@ -1,4 +1,5 @@
 #include "wifi_board.h"
+#include "assets/lang_config.h"
 #include "codecs/es8388_audio_codec.h"
 #include "display/lcd_display.h"
 #include "application.h"
@@ -94,7 +95,7 @@ private:
     void ClearNvsAndReboot() {
         auto* display = GetDisplay();
         if (display != nullptr) {
-            display->ShowNotification("正在清除NVS...");
+            display->ShowNotification(Lang::Strings::CLEARING_NVS);
         }
 
         xTaskCreate([](void* arg) {
@@ -125,7 +126,7 @@ private:
         if (sizeof(CONFIG_DEBUG_OTA_URL) <= 1) {
             auto* display = GetDisplay();
             if (display != nullptr) {
-                display->ShowNotification("未配置调试OTA地址");
+                display->ShowNotification(Lang::Strings::DEBUG_OTA_URL_NOT_CONFIGURED);
             }
             ESP_LOGW(TAG, "Debug OTA toggle requested but CONFIG_DEBUG_OTA_URL is empty");
             return;
@@ -137,7 +138,8 @@ private:
 
         auto* display = GetDisplay();
         if (display != nullptr) {
-            display->ShowNotification(!enabled ? "调试OTA已开启，正在重启" : "调试OTA已关闭，正在重启");
+            display->ShowNotification(!enabled ? Lang::Strings::DEBUG_OTA_ENABLED_REBOOTING
+                                               : Lang::Strings::DEBUG_OTA_DISABLED_REBOOTING);
         }
 
         xTaskCreate([](void* arg) {

@@ -837,14 +837,21 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_style_border_width(emoji_box_, 0, 0);
     lv_obj_align(emoji_box_, LV_ALIGN_CENTER, 0, 0);
 
-    emoji_label_ = lv_label_create(emoji_box_);
-    lv_obj_set_style_text_font(emoji_label_, large_icon_font, 0);
-    lv_obj_set_style_text_color(emoji_label_, lvgl_theme->text_color(), 0);
-    lv_label_set_text(emoji_label_, FONT_AWESOME_MICROCHIP_AI);
+    notification_label_ = lv_label_create(emoji_box_);
+    lv_obj_set_width(notification_label_, LV_HOR_RES * 0.75);
+    lv_obj_set_style_text_align(notification_label_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(notification_label_, lvgl_theme->text_color(), 0);
+    lv_label_set_text(notification_label_, "");
+    lv_obj_align(notification_label_, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_flag(notification_label_, LV_OBJ_FLAG_HIDDEN);
 
-    emoji_image_ = lv_img_create(emoji_box_);
-    lv_obj_center(emoji_image_);
-    lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
+    status_label_ = lv_label_create(emoji_box_);
+    lv_obj_set_width(status_label_, LV_HOR_RES * 0.75);
+    lv_label_set_long_mode(status_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_style_text_align(status_label_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(status_label_, lvgl_theme->text_color(), 0);
+    lv_label_set_text(status_label_, Lang::Strings::INITIALIZING);
+    lv_obj_align(status_label_, LV_ALIGN_CENTER, 0, 0);
 
     /* Middle layer: preview_image_ - centered display */
     preview_image_ = lv_image_create(screen);
@@ -908,21 +915,16 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_style_layout(status_bar_, LV_LAYOUT_NONE, 0);  // Use absolute positioning
     lv_obj_align(status_bar_, LV_ALIGN_TOP_MID, 0, 0);  // Overlap with top_bar_
 
-    notification_label_ = lv_label_create(status_bar_);
-    lv_obj_set_width(notification_label_, LV_HOR_RES * 0.75);
-    lv_obj_set_style_text_align(notification_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(notification_label_, lvgl_theme->text_color(), 0);
-    lv_label_set_text(notification_label_, "");
-    lv_obj_align(notification_label_, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_flag(notification_label_, LV_OBJ_FLAG_HIDDEN);
+    emoji_label_ = lv_label_create(status_bar_);
+    lv_obj_center(emoji_label_);
+    lv_obj_set_style_text_font(emoji_label_, large_icon_font, 0);
+    lv_obj_set_style_text_color(emoji_label_, lvgl_theme->text_color(), 0);
+    lv_label_set_text(emoji_label_, FONT_AWESOME_MICROCHIP_AI);
 
-    status_label_ = lv_label_create(status_bar_);
-    lv_obj_set_width(status_label_, LV_HOR_RES * 0.75);
-    lv_label_set_long_mode(status_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_style_text_align(status_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(status_label_, lvgl_theme->text_color(), 0);
-    lv_label_set_text(status_label_, Lang::Strings::INITIALIZING);
-    lv_obj_align(status_label_, LV_ALIGN_CENTER, 0, 0);
+    emoji_image_ = lv_img_create(status_bar_);
+    lv_obj_set_size(emoji_image_, LV_VER_RES * 0.15, LV_VER_RES * 0.15);
+    lv_obj_center(emoji_image_);
+    lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
 
 #if CONFIG_USE_MULTILINE_CHAT_MESSAGE
     /* Bottom bar - auto height, grows upward with wrapped text */
@@ -1071,6 +1073,10 @@ void LcdDisplay::ClearChatMessages() {
 }
 #endif
 
+inline void img_scale_based_screen(lv_obj_t* image, const double ratio, const lv_image_header_t& header) {
+    lv_img_set_zoom(image, ratio * LV_VER_RES / header.h * LV_ZOOM_NONE);
+}
+
 void LcdDisplay::SetEmotion(const char* emotion) {
     if (!setup_ui_called_) {
         ESP_LOGW(TAG, "SetEmotion('%s') called before SetupUI() - emotion will not be displayed!", emotion);
@@ -1106,11 +1112,14 @@ void LcdDisplay::SetEmotion(const char* emotion) {
         gif_controller_->Stop();
         gif_controller_.reset();
     }
+
     if (image->IsGif()) {
         // Create new GIF controller
         gif_controller_ = std::make_unique<LvglGif>(image->image_dsc());
         
         if (gif_controller_->IsLoaded()) {
+            lv_img_set_zoom(emoji_image_, 0.15 * LV_VER_RES / gif_controller_->image_dsc()->header.h * LV_ZOOM_NONE);
+
             // Set up frame update callback
             gif_controller_->SetFrameCallback([this]() {
                 lv_image_set_src(emoji_image_, gif_controller_->image_dsc());
@@ -1128,6 +1137,8 @@ void LcdDisplay::SetEmotion(const char* emotion) {
             gif_controller_.reset();
         }
     } else {
+        lv_img_set_zoom(emoji_image_, 0.15 * LV_VER_RES / image->image_dsc()->header.h * LV_ZOOM_NONE);
+
         lv_image_set_src(emoji_image_, image->image_dsc());
         lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
